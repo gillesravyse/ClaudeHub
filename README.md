@@ -67,7 +67,8 @@ off.
   while Claude is working, pulsing blue when a permission prompt needs an
   answer. Scan the sidebar to see which session wants you
 - 🗑️ **Delete sessions** — remove a chat (or every chat in a project) for good
-  from the context menu or with `⌫`. Transcript, tool results, and session env
+  from the context menu or with `⌫`; `⌘`- or `⇧`-click to pick several and
+  delete them in one go. Transcript, tool results, and session env
   go to the **Trash**, so a mis-click is recoverable in Finder
 - 🔌 **MCP manager** — see every configured MCP server across user, project
   (`.mcp.json`), and local scopes; add and remove them from the UI (backed by
@@ -153,7 +154,7 @@ package.
 | `⇧⌘N` | New Claude session in a folder you pick |
 | `⌘T` | New shell tab in the current folder |
 | `⌥⌘N` | New window |
-| `⌫` | Delete the selected session (asks first) |
+| `⌫` | Delete the selected sessions (asks first) |
 | `⌘⌫` | Same, from the Edit menu |
 | `⌘W` | Close tab |
 | `⇧⌘W` | Close window |

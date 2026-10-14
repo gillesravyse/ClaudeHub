@@ -9,7 +9,9 @@ struct ContentView: View {
     @ObservedObject var terminalManager = TerminalManager.shared
     @ObservedObject var updates = UpdateChecker.shared
     @Environment(\.colorScheme) private var colorScheme
-    @State private var selectedSessionID: String?
+    /// One chat, normally — the one in front of you. ⌘- and ⇧-click gather
+    /// more, to delete together.
+    @State private var selectedSessionIDs: Set<String> = []
     @State private var searchText = ""
     @State private var showMCPManager = false
     @State private var showHiddenSessions = false
@@ -270,8 +272,10 @@ struct ContentView: View {
             tabs.adoptSessionTitles(from: projects)
             git.track(projects: projects.map(\.path))
         }
-        .onChange(of: selectedSessionID) { _, id in
-            guard let id, let session = session(withID: id) else { return }
+        .onChange(of: selectedSessionIDs) { _, ids in
+            // Gathering several chats is picking what to act on, not asking to
+            // open each one on the way.
+            guard ids.count == 1, let id = ids.first, let session = session(withID: id) else { return }
             tabs.openSession(session)
         }
         .onChange(of: tabs.activeTabID) { previous, _ in
@@ -286,9 +290,9 @@ struct ContentView: View {
             // with name that pass — `withSelectionUpdateGuard`, and an exception
             // thrown mid-layout — so the write waits for the next turn of the
             // loop, and only happens if it would change anything at all.
-            let wanted = tabs.activeTab?.sessionID
-            if wanted != selectedSessionID {
-                DispatchQueue.main.async { selectedSessionID = wanted }
+            let wanted: Set<String> = tabs.activeTab?.sessionID.map { [$0] } ?? []
+            if wanted != selectedSessionIDs {
+                DispatchQueue.main.async { selectedSessionIDs = wanted }
             }
             syncVisibleTabs()
             // A search belongs to the terminal it was run in.
@@ -339,7 +343,7 @@ struct ContentView: View {
     }
 
     private var sidebar: some View {
-        List(selection: $selectedSessionID) {
+        List(selection: $selectedSessionIDs) {
             ForEach(filteredProjects) { project in
                 // Expansion is ours, not the system's: the sidebar's own
                 // hover-to-fold toggle sat under the ⊕ and could leave a
@@ -354,7 +358,15 @@ struct ContentView: View {
                                    isPinned: store.pinnedSessionIDs.contains(session.id))
                             .clickable()
                             .tag(session.id)
-                            .contextMenu { sessionMenu(session) }
+                            .contextMenu {
+                                // Right-clicking one of several selected chats
+                                // is about all of them, the way it is in Finder.
+                                if selectedSessionIDs.count > 1 && selectedSessionIDs.contains(session.id) {
+                                    selectionMenu()
+                                } else {
+                                    sessionMenu(session)
+                                }
+                            }
                     }
                     }
                 } header: {
@@ -827,6 +839,14 @@ struct ContentView: View {
     }
 
     @ViewBuilder
+    private func selectionMenu() -> some View {
+        let count = selectedSessions.count
+        Button(count == 1 ? "Delete Session…" : "Delete \(count) Sessions…", role: .destructive) {
+            requestDeletionOfSelection()
+        }
+    }
+
+    @ViewBuilder
     private func projectMenu(_ project: ClaudeProject) -> some View {
         Button("New Session in This Project") { newSession(in: project.path) }
         Button("New Terminal in This Project") { tabs.openNewTab(cwd: project.path) }
@@ -859,7 +879,8 @@ struct ContentView: View {
 
     private var deleteMessage: String {
         let running = pendingDeletion.filter { terminalManager.isRunning($0.id) }.count
-        var text = "Deleting \(deletionScope) moves the transcript to the Trash. "
+        var text = "Deleting \(deletionScope) moves "
+            + (pendingDeletion.count == 1 ? "the transcript" : "their transcripts") + " to the Trash. "
             + "The chat disappears from ClaudeHub and can no longer be resumed."
         if running > 0 {
             text += running == 1
@@ -875,10 +896,26 @@ struct ContentView: View {
         pendingDeletion = sessions
     }
 
-    /// The ⌫ key on the focused sidebar row.
+    /// The chats a delete of the selection reaches, in sidebar order.
+    private var selectedSessions: [ClaudeSession] {
+        // One is the chat in front of you, whether its project is folded or not.
+        if selectedSessionIDs.count == 1, let id = selectedSessionIDs.first {
+            return session(withID: id).map { [$0] } ?? []
+        }
+        // Several are only the ones you can still see: a search or a fold
+        // takes rows off screen without unselecting them, and a delete should
+        // not reach chats you are no longer looking at.
+        return filteredProjects
+            .filter { !searchText.isEmpty || !store.collapsedProjects.contains($0.path) }
+            .flatMap(\.sessions)
+            .filter { selectedSessionIDs.contains($0.id) }
+    }
+
+    /// The ⌫ key in the sidebar, ⌘⌫ from the menu, or the menu on a selection.
     private func requestDeletionOfSelection() {
-        guard let id = selectedSessionID, let session = session(withID: id) else { return }
-        requestDeletion([session], scope: "“\(session.title)”")
+        let sessions = selectedSessions
+        guard let first = sessions.first else { return }
+        requestDeletion(sessions, scope: sessions.count == 1 ? "“\(first.title)”" : "these \(sessions.count) sessions")
     }
 
     private func confirmDeletion() {
@@ -888,7 +925,7 @@ struct ContentView: View {
 
         let ids = Set(sessions.map(\.id))
         tabs.closeTabs(forSessionIDs: ids)
-        if let selected = selectedSessionID, ids.contains(selected) { selectedSessionID = nil }
+        selectedSessionIDs.subtract(ids)
 
         let failed = store.delete(sessions)
         guard !failed.isEmpty else { return }
