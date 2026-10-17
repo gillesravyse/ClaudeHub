@@ -504,8 +504,7 @@ final class TerminalManager: NSObject, ObservableObject {
         case .cursor(let chat):
             let missing = "echo 'The Cursor agent is not installed. Install it with:'; echo; "
                 + "echo '  curl https://cursor.com/install -fsS | bash'; echo; exec /bin/zsh -i -l"
-            let model = tab.cursorModel ?? .current
-            start(view, envArray, CursorAgent.command(chat: chat, model: model) ?? missing, in: tab.cwd)
+            start(view, envArray, CursorAgent.command(chat: chat) ?? missing, in: tab.cwd)
         case .shell, .diff:
             // A diff tab has no process; it never asks for a terminal, and the
             // case is here only because the switch must cover it.

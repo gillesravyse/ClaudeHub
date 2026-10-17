@@ -108,10 +108,10 @@ off.
 - 🖱️ **Cursor chats too** — if Cursor's agent CLI is on the Mac, its chats sit
   in the same projects as your Claude sessions (marked with a pointer), resume
   in a tab with one click, and get the same dots, notifications, search,
-  pinning, renaming and deleting. `⌃⌘N` starts one; the picker in the toolbar
-  offers only the models your Cursor plan includes (Grok 4.7 · 4.6 · 4.5 ·
-  Composer 2.5), so a chat never quietly runs on one billed by the token. The
-  footer shows the plan's weekly pool above Claude's limits
+  pinning, renaming and deleting. `⌃⌘N` starts one, on whatever model `/model`
+  last chose in one, as with Claude. The footer shows the plan's weekly pool
+  (Grok 4.7 · 4.6 · 4.5 · Composer 2.5) above Claude's limits, and what every
+  other model has cost beside it
 - 🔍 Search across projects and session titles, open the folder in VS Code,
   hand-off to Terminal.app, reveal in Finder, copy resume command
 
@@ -258,7 +258,7 @@ Deleting a Cursor chat moves its folder and its transcript to the Trash.
 A tab runs
 
 ```sh
-cursor-agent --trust --auto-review --model <model> [--resume <chat-id>]
+cursor-agent --trust --auto-review [--resume <chat-id>]
 ```
 
 — `--auto-review` is Cursor's auto mode, where safe actions run without asking.

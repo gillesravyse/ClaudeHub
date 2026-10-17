@@ -2,36 +2,6 @@ import AppKit
 import CryptoKit
 import Foundation
 
-/// The models a Cursor plan's weekly pool covers.
-///
-/// Everything else Cursor offers is paid for out of prepaid credit, so the
-/// picker offers only these: a chat that quietly runs on a model billed by the
-/// token is exactly what choosing a model here is meant to rule out.
-enum CursorModel: String, CaseIterable, Identifiable {
-    case grok47 = "grok-4.7"
-    case grok46 = "cursor-grok-4.6-high"
-    case grok45 = "cursor-grok-4.5-high"
-    case composer = "composer-2.5"
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .grok47: return "Grok 4.7"
-        case .grok46: return "Grok 4.6"
-        case .grok45: return "Grok 4.5"
-        case .composer: return "Composer 2.5"
-        }
-    }
-
-    static let summary = "Grok 4.7 · 4.6 · 4.5 · Composer 2.5"
-
-    /// What new Cursor chats start on — the toolbar picker writes the same key.
-    static var current: CursorModel {
-        UserDefaults.standard.string(forKey: "cursorModel").flatMap(CursorModel.init(rawValue:)) ?? .grok47
-    }
-}
-
 /// Cursor's command-line agent, and what ClaudeHub reads from Cursor around it.
 ///
 /// The agent keeps each chat in `~/.cursor/chats/<md5 of the folder>/<id>/`,
@@ -135,14 +105,15 @@ enum CursorAgent {
 
     // MARK: - Starting
 
-    /// What a Cursor tab runs: the agent in the tab's folder, on one of the
-    /// plan's own models. `--trust` skips the "trust this folder?" question and
-    /// `--auto-review` is Cursor's auto mode — safe actions run by themselves,
-    /// so the prompt is for typing rather than for pressing Accept.
-    static func command(chat: String?, model: CursorModel) -> String? {
+    /// What a Cursor tab runs: the agent in the tab's folder. `--trust` skips
+    /// the "trust this folder?" question and `--auto-review` is Cursor's auto
+    /// mode — safe actions run by themselves, so the prompt is for typing
+    /// rather than for pressing Accept. No `--model`: the agent remembers what
+    /// `/model` last chose, as Claude Code does, and a flag here would
+    /// override that every time.
+    static func command(chat: String?) -> String? {
         guard let binary else { return nil }
         var command = "exec \(ClaudeSession.shellQuote(binary)) --trust --auto-review"
-            + " --model \(ClaudeSession.shellQuote(model.rawValue))"
         if let chat { command += " --resume \(ClaudeSession.shellQuote(chat))" }
         return command
     }

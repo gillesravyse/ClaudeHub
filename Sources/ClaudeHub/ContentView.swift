@@ -25,8 +25,6 @@ struct ContentView: View {
     @State private var renameDraft = ""
     @State private var renameError: String?
     @FocusState private var renameFieldFocused: Bool
-    /// The model new Cursor chats start on.
-    @AppStorage("cursorModel") private var cursorModel: CursorModel = .grok47
 
     /// Matches the SwiftTerm palette background in TerminalManager.
     private var terminalBackground: SwiftUI.Color {
@@ -463,7 +461,7 @@ struct ContentView: View {
                               labels: ("Week", "Other"),
                               about: """
                                   Week: the pool your Cursor plan includes, which \
-                                  \(CursorModel.summary) draw on. Other: every other \
+                                  \(CursorUsageStore.includedModels) draw on. Other: every other \
                                   model, which does not.
                                   """,
                               refresh: { cursorUsage.refresh() })
@@ -815,31 +813,11 @@ struct ContentView: View {
             .disabled(tabs.tabs.count <= 1)
             .help("Show two or three tabs side by side (⌘\\) — or drag a tab to the right edge")
 
-            if CursorAgent.isInstalled {
-                // On screen rather than tucked into a menu: the model is a
-                // choice made before a chat starts, and it is the one thing
-                // standing between a chat and a model billed by the token.
-                Picker("Cursor model", selection: $cursorModel) {
-                    ForEach(CursorModel.allCases) { model in
-                        Text(model.title).tag(model)
-                    }
-                }
-                .pickerStyle(.menu)
-                .help("The model new Cursor chats start on — only the ones your plan includes")
-
-                Button {
-                    if tabs.activeTab == nil { newCursorChatInChosenFolder() } else { newCursorChat() }
-                } label: {
-                    Image(systemName: "cursorarrow.rays")
-                }
-                .help("New Cursor chat on \(cursorModel.title) in \(TabsModel.folderName(tabs.currentFolder)) (⌃⌘N)")
-            }
-
             Menu {
                 Section(TabsModel.folderName(tabs.currentFolder)) {
                     Button("New Claude Session") { newSession() }
                     if CursorAgent.isInstalled {
-                        Button("New Cursor Chat (\(cursorModel.title))") { newCursorChat() }
+                        Button("New Cursor Chat") { newCursorChat() }
                     }
                     Button("New Terminal") { tabs.openNewTab() }
                 }
@@ -895,7 +873,7 @@ struct ContentView: View {
                 paneStack
             }
             .navigationTitle(tab.title)
-            .navigationSubtitle(tab.cursorModel.map { "\(tab.cwd) · Cursor · \($0.title)" } ?? tab.cwd)
+            .navigationSubtitle(tab.isCursor ? "\(tab.cwd) · Cursor" : tab.cwd)
             .modifier(HidesTitle(hidden: isRenaming(tab)))
             // Going to another tab is clicking elsewhere too.
             .onChange(of: tab.id) { _, _ in commitRename() }
@@ -939,9 +917,9 @@ struct ContentView: View {
         newSession(in: url.path)
     }
 
-    /// ⌃⌘N — a Cursor chat on the model in the toolbar.
+    /// ⌃⌘N — a Cursor chat on whatever model `/model` last chose in one.
     private func newCursorChat(in folder: String? = nil) {
-        tabs.openNewCursorChat(cwd: folder, model: cursorModel)
+        tabs.openNewCursorChat(cwd: folder)
     }
 
     private func newCursorChatInChosenFolder() {
@@ -949,7 +927,7 @@ struct ContentView: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.message = "Choose the folder for the new Cursor chat (\(cursorModel.title))"
+        panel.message = "Choose the folder for the new Cursor chat"
         panel.prompt = "Start Chat"
         panel.directoryURL = URL(fileURLWithPath: tabs.currentFolder)
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -960,14 +938,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private func sessionMenu(_ session: ClaudeSession) -> some View {
-        if session.isCursor {
-            Menu("Resume on") {
-                ForEach(CursorModel.allCases) { model in
-                    Button(model.title) { resumeCursorChat(session, on: model) }
-                }
-            }
-            Divider()
-        } else if !accounts.tokenProfiles.isEmpty {
+        if !session.isCursor, !accounts.tokenProfiles.isEmpty {
             Menu("Resume as") {
                 ForEach(accounts.tokenProfiles, id: \.self) { profile in
                     Button(accounts.describe(profile: profile)) {
@@ -1149,17 +1120,6 @@ struct ContentView: View {
         tabs.openGraph(command: command, session: session, alongside: alongside)
     }
 
-    /// A Cursor chat on a model of your choosing: a chat already open moves to
-    /// it and carries on where it was.
-    private func resumeCursorChat(_ session: ClaudeSession, on model: CursorModel) {
-        if let open = tabs.tab(forSessionID: session.id) {
-            tabs.show(open.id)
-            tabs.restartCursorChat(open.id, on: model)
-        } else {
-            tabs.openCursorChat(session, model: model)
-        }
-    }
-
     private func openInVSCode(_ path: String) {
         guard let application = Self.vsCodeURL else { return }
         NSWorkspace.shared.open([URL(fileURLWithPath: path)],
@@ -1182,7 +1142,7 @@ struct ContentView: View {
         // the editor's token is handed to tabs in this window, never written
         // into a file.
         let resume = session.isCursor
-            ? CursorAgent.command(chat: session.id, model: cursorModel) ?? "echo 'The Cursor agent is not installed.'"
+            ? CursorAgent.command(chat: session.id) ?? "echo 'The Cursor agent is not installed.'"
             : "exec \(session.resumeCommand)"
         let body = """
         #!/bin/zsh
@@ -1267,16 +1227,13 @@ private struct TabStrip: View {
                             activate: { tabs.show(tab.id) },
                             splitOff: { tabs.splitOff(tab.id) },
                             canSplit: tabs.canSplit,
-                            // A new Cursor chat restarted is another new chat,
-                            // which the tab has to go and find again.
                             restart: {
                                 if tab.isCursor {
-                                    tabs.restartCursorChat(tab.id, on: tab.cursorModel ?? .current)
+                                    tabs.restartCursorChat(tab.id)
                                 } else {
                                     terminalManager.relaunch(tab)
                                 }
                             },
-                            restartOn: { tabs.restartCursorChat(tab.id, on: $0) },
                             close: { tabs.close(tab.id) }
                         )
                         // Drop a tab on one of its neighbours to put it there,
@@ -1574,14 +1531,12 @@ private struct TabChip: View {
     let splitOff: () -> Void
     let canSplit: Bool
     let restart: () -> Void
-    /// A Cursor chat, carried on on another model.
-    let restartOn: (CursorModel) -> Void
     let close: () -> Void
 
     @State private var hovering = false
 
     private var runsAs: String {
-        if let model = tab.cursorModel { return "Cursor · \(model.title)" }
+        if tab.isCursor { return "Cursor chat" }
         return account.map { "Running as \($0)" } ?? "Running as the signed-in account"
     }
 
@@ -1634,14 +1589,6 @@ private struct TabChip: View {
                 Button("Open Beside") { splitOff() }
             }
             Text(fellBackFrom.map { "Wanted \($0) — running on the signed-in account" } ?? runsAs)
-            if tab.isCursor {
-                Menu("Continue on") {
-                    ForEach(CursorModel.allCases) { model in
-                        Button(model.title) { restartOn(model) }
-                            .disabled(model == tab.cursorModel)
-                    }
-                }
-            }
             Button(tab.isConversation
                    ? "Restart as \(accountLabel)"
                    : "Restart Tab") { restart() }

@@ -2,8 +2,8 @@ import Foundation
 
 /// The Cursor plan's usage, beside Claude's limits in the sidebar footer.
 ///
-/// Cursor counts two things: the weekly pool the plan includes, which the
-/// models in `CursorModel` draw on, and every other model, which does not.
+/// Cursor counts two things: the weekly pool the plan includes, which a few
+/// of its models draw on, and every other model, which does not.
 /// The editor buries both in its settings. This asks the same dashboard
 /// service the editor asks, signed in as the editor is, and the answer costs
 /// nothing — so unlike Claude's API reading it simply runs every two minutes.
@@ -21,6 +21,10 @@ final class CursorUsageStore: ObservableObject {
     /// Claude's alone.
     let isAvailable = CursorAgent.isInstalled
         || FileManager.default.fileExists(atPath: CursorAgent.stateDatabase.path)
+
+    /// The models the weekly pool covers. Cursor's `/model` lists every model
+    /// it has, so the footer says which of them cost nothing extra.
+    static let includedModels = "Grok 4.7 · 4.6 · 4.5 · Composer 2.5"
 
     private var timer: Timer?
     private let interval: TimeInterval = 120

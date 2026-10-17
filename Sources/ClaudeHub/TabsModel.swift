@@ -30,8 +30,6 @@ struct TerminalTab: Identifiable, Hashable {
     /// The chat's name as this tab last took it from the sidebar, so a new
     /// name can replace it without touching what else the title carries.
     var chatName: String? = nil
-    /// The model a Cursor chat runs on.
-    var cursorModel: CursorModel? = nil
 
     /// The Claude conversation this tab is — resumed, or started here with a
     /// session id we picked ourselves. Nil for shells and one-shot commands.
@@ -141,36 +139,34 @@ final class TabsModel: ObservableObject {
     // MARK: - Cursor
 
     /// Resumes a Cursor chat, or brings forward the tab it is already in.
-    func openCursorChat(_ session: ClaudeSession, model: CursorModel = .current) {
+    func openCursorChat(_ session: ClaudeSession) {
         if let open = tab(forSessionID: session.id) { return show(open.id) }
         append(TerminalTab(
             id: "cursor-\(session.id)",
             title: session.title,
             cwd: session.cwd,
             kind: .cursor(session.id),
-            chatName: session.title,
-            cursorModel: model
+            chatName: session.title
         ))
     }
 
     /// ⌃⌘N: a fresh Cursor chat in `cwd` (the current folder by default).
-    func openNewCursorChat(cwd: String? = nil, model: CursorModel = .current) {
+    func openNewCursorChat(cwd: String? = nil) {
         let folder = cwd ?? currentFolder
         append(TerminalTab(
             id: "cursor-new-\(UUID().uuidString)",
             title: "New Cursor chat · \(Self.folderName(folder))",
             cwd: folder,
             kind: .cursor(nil),
-            hasProvisionalTitle: true,
-            cursorModel: model
+            hasProvisionalTitle: true
         ))
         watchForCursorChats()
     }
 
-    /// Carries on the same chat on another of the plan's models.
-    func restartCursorChat(_ id: String, on model: CursorModel) {
+    /// A new Cursor chat restarted is another new chat, which the tab has to
+    /// go and find again.
+    func restartCursorChat(_ id: String) {
         guard let index = tabs.firstIndex(where: { $0.id == id }), tabs[index].isCursor else { return }
-        tabs[index].cursorModel = model
         TerminalManager.shared.relaunch(tabs[index])
         if tabs[index].kind == .cursor(nil) { watchForCursorChats() }
     }
